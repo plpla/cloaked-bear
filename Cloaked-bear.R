@@ -1,0 +1,171 @@
+#! /is1/data/users/plapie01/software/R/R-3.0.1/bin/Rscript
+#To use: Rscript Cloaked-bear.R file1 file2 file3 ... annotation.gff OuputDirectoryName
+#Output directory will be created if it does not exist.
+#wILL OVERWRITE PLOTS AND FILES IF NEEDED.
+#Will run with 4 threads by default. This can be changed by modifing the numThreads value
+#This analysis is based on http://cgrlucb.wikispaces.com/edgeR+spring2013
+#Most parts are a copy of what can be found on the website...
+#There is no guarantee that this code will provide good results.
+
+#######################################################################################
+##										     ##
+##	YOU ARE RESPONSIBLE OF YOUR ANALYSIS. THIS CODE IS ONLY A TEMPLATE.	     ##
+##										     ##
+#######################################################################################
+
+
+
+library(Rsubread)
+library(RColorBrewer)
+library(edgeR)
+
+numThreads=4;
+numOfGene=500; #for heatMap
+colors=brewer.pal(9, "Set1");
+
+args=commandArgs(trailingOnly=TRUE)
+print(args)
+outputDirectory=args[length(args)];
+annotationFile=args[(length(args)-1)]
+fileList=args[0:(length(args)-2)];
+print(annotationFile);
+dir.create(outputDirectory);
+
+#lets start to work with some data!
+count=featureCounts(files=fileList,nthreads=numThreads, annot=annotationFile, isGTFAnnotationFile=TRUE );
+countTable=count$count;
+means=rowMeans(countTable);
+filter=means>=10;
+
+#set to true to print a table showing the number of exon with an expression level >10
+if(FALSE){
+	table(filter);
+}
+
+geneCounts=countTable[filter,];
+#Now that files are read, we can change the wd.
+setwd(outputDirectory);
+
+##Uncomment and adapt if graph is wanted. A new file describing sampleprep and condition could be nedded...
+if(FALSE){
+	totCounts <- colSums(geneLevelCounts)
+	##laneInfo is a table containing the samples description.Change the ...
+	laneInfo=...
+	barplot(totCounts, las=2, col=colors[laneInfo[,2]])
+	barplot(totCounts, las=2, col=colors[laneInfo[,4]])
+}
+
+
+#BoxPlot of difference in distribution between each experiment.Set to true if wanted...
+if(FALSE){
+	png("BoxPlot_DistributionPerExperiment.png");
+	#Need to add flafla to graph
+	boxplot(log2(geneCounts+1), las=2);
+	dev.off();
+}
+
+#The next section use EdgeR. Documentation: http://www.bioconductor.org/packages/2.12/bioc/manuals/edgeR/man/edgeR.pdf
+#There is no best way to analyse RNA-seq because every experiment is different.
+# I recommand to carefully look at the code bellow.
+
+
+#######################################################################################
+##This section is for a two component analysis (2 groups, 2 samples or 2 conditions) ##
+#######################################################################################
+#Set to true if needed. Set to false otherwise.
+#You must create a table containing only the necessary samples and a group variable
+#the group variable should look like this for 6 samples splitted in 2 groups(Del and Gly)
+# group
+#[1] Del Del Del Gly Gly Gly
+#dataToCreateDGE is a selection of column from the original table.
+# CHange the ... below
+if(FALSE){
+	group=c(...);
+	dataToCreateDGE=geneCounts[...];
+
+	cds=DGEList(dataToCreateDGE, group=group);
+	#If true will print the number of having 0 counts across all samples.
+	if(FALSE){
+		sum(cds$all.zeros)
+	}
+	#The normalisation method use, possibility: "TMM", "RLE", "upperquartile", "non"
+	normalisationMethod="TMM"
+	cds=calcNormFactors(cds, method=normalisationMethod);
+	
+	#pseudo-count creation for cluster analysis. Needed for heat-map...
+	if(TRUE){
+		scale=cds$samples$lib.size*cds$samples$norm.factors;
+		normCounts=round(t(t(dataToCreateDGE)/scale)*mean(scale));
+		#BoxPLot of the normalized pseudo-count
+		if(FALSE){
+			png("BoxPlot_DistributionNormlizedPseudoCounts.png");
+			boxplot(log2(normCounts+1), las=2); #could add color
+			#need to add flafla to graph
+			dev.off();
+		}
+	}
+	#An MDS plot to measures the similarity of the samples. Usefull for QC and sample visualization.
+	if(FALSE){
+		png("MDSplotForCountData.png");
+		plotsMDS(cds, main="MDS Plot for normalized count data", label=colnames(cds$counts));
+		dev.off();
+		#flafla...
+	}
+	#We need to estimate the common dispersion: this assumes that all the genes have the same dispersion.
+	#For more explication see http://cgrlucb.wikispaces.com/edgeR+spring2013
+	cds=estimateCommonDisp(cds, verbose=TRUE);
+	cds=estimateTagwiseDisp(cds);
+	#You should look for estimateTrendedDisp in edgeR doc. I don't fully understand...
+	#To plot the biological coefficient of variation. Can be set to FALSE
+	if(TRUE){
+		png("Plot-BiologicalCoefficientOfVariation");
+		plotBCV(cds);
+		def.off();
+	}
+	#To plot mean-variance relation
+	if(TRUE){
+		png("Plot-Mean-Variance");
+		#First line is for data, second is for format. You will need to do some adjustment on the first line...
+		plotMeanVar(cds, show.raw.vars=TRUE, show.tagwise.vars=TRUE, show.binned.common.disp.vars=FALSE, show.ave.raw.vars=FALSE, NBline = TRUE , nbins = 100 , 
+		pch = 16 , xlab ="Mean Expression (Log10 Scale)" , ylab = "Variance (Log10 Scale)" , main = "Mean-Variance Plot" );
+		dev.off();
+	}
+	et <- exactTest(cds, pair=levels(group))
+	topTags(et)
+	top <- topTags(et, n=nrow(cds$counts))$table
+	head(top)
+	de <- rownames(top[top$FDR<0.05,])
+	length(de)
+	head(de)
+	if(FALSE){
+		png("Histogram_distributionPvalue");
+		hist(top$PValue, breaks=20)
+		dev.off()
+	}
+	if(TRUE){
+		png("PlotSmear_mean-diffrence");
+		plotSmear(cds , de.tags=de)
+		abline(h=c(-2, 2), col=colors[2])
+	}
+	if(TRUE){
+		png("VolcanoPlot_logFoldChangesAndPvalues");
+		plot(top$logFC, -log10(top$PValue), pch=20, cex=.5, ylab="-log10(p-value)", xlab="logFC", col=as.numeric(rownames(top) %in% de)+1)
+		abline(v=c(-2, 2), col=colors[2])
+		def.off()
+	}
+	if(TRUE){
+		png("HeatMap_topGenes");
+		heatmap(log(normCounts[de[1:numOfGene],]+1), ColSideColor=colors[group]);
+	}
+	if(TRUE){
+		write.table(top, file="two-class-results.txt", sep='\t', quote=FALSE)
+	}
+}
+
+
+#3 components comparison using the Generalized Linear Model approach.
+if(FALSE){
+	
+
+}
+
