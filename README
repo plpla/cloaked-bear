@@ -1,5 +1,5 @@
 Automatisation of post-alignment RNA-seq analysis
 
-Dependencies: R, edgeR, htseq-count
+Dependencies: R, edgeR, Rsubread, RColorBrewer 
 
 Still in devel...
