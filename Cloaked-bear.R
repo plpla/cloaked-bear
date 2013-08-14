@@ -7,6 +7,8 @@
 #Most parts are a copy of what can be found on the website...
 #There is no guarantee that this code will provide good results.
 
+#To use: change the TRUE and FALSE switch to obtain the desired result...
+#Add a few small lines of code where specified (between the ! lines).
 #######################################################################################
 ##										     ##
 ##	YOU ARE RESPONSIBLE OF YOUR ANALYSIS. THIS CODE IS ONLY A TEMPLATE.	     ##
@@ -106,7 +108,7 @@ if(FALSE){
 	}
 	#An MDS plot to measures the similarity of the samples. Usefull for QC and sample visualization.
 	if(FALSE){
-		png("MDSplotForCountData.png");
+		png("MDSplot_ForCountData.png");
 		plotsMDS(cds, main="MDS Plot for normalized count data", label=colnames(cds$counts));
 		dev.off();
 		#flafla...
@@ -118,13 +120,13 @@ if(FALSE){
 	#You should look for estimateTrendedDisp in edgeR doc. I don't fully understand...
 	#To plot the biological coefficient of variation. Can be set to FALSE
 	if(TRUE){
-		png("Plot-BiologicalCoefficientOfVariation");
+		png("Plot_BiologicalCoefficientOfVariation");
 		plotBCV(cds);
 		def.off();
 	}
 	#To plot mean-variance relation
 	if(TRUE){
-		png("Plot-Mean-Variance");
+		png("Plot_Mean-Variance");
 		#First line is for data, second is for format. You will need to do some adjustment on the first line...
 		plotMeanVar(cds, show.raw.vars=TRUE, show.tagwise.vars=TRUE, show.binned.common.disp.vars=FALSE, show.ave.raw.vars=FALSE, NBline = TRUE , nbins = 100 , 
 		pch = 16 , xlab ="Mean Expression (Log10 Scale)" , ylab = "Variance (Log10 Scale)" , main = "Mean-Variance Plot" );
@@ -163,9 +165,102 @@ if(FALSE){
 }
 
 
-#3 components comparison using the Generalized Linear Model approach.
+#3 components comparison using the Generalized Linear Model (GLM) approach.
 if(FALSE){
+	#Group is a variable containing caracteristic to group samples in 3 groups. i.e. for 14 samples
+	#group
+	# [1] YPD YPD YPD YPD YPD YPD YPD YPD Del Del Del Gly Gly Gly
+	#Levels: Del Gly YPD
+	#Change the ...
+	group=...
+	cds= DGEList(geneCounts, group=group);
 	
+	design=model.matrix(~group)
+	#Ste to TRUE to see the design matrix.
+	if(FALSE){
+		design
+	}
+	#The normalisation method use, possibility: "TMM", "RLE", "upperquartile", "non"
+        normalisationMethod="TMM"
+	cds=calcNormFactors(geneCounts, method=normalisationMethod);
+	
+	#For pseudo-counts. Needed for heat-map
+	if(TRUE){
+		scale=geneCounts$samples$lib.size*geneCounts$samples$norm.factors
+		normCounts=round(t(t(counts)/scale)*mean(scale))
+		#Boxplot- distribution of pseudo counts. Not sure if log or log2
+		if(FALSE){
+			png("Boxplot_GLM_DistributionNormlizedPseudoCounts.png")
+			boxplot(log2(normCounts+1), las=2, col=colors[geneCounts$samples$group])
+			#flafla...
+			dev.off();
+		}
+	}
+	#MDS plot->similarity of the samples. For QC and samples vizualisation
+	if(FALSE){
+		png("MDSplot_GLM_PlotForCOuntData.png");
+		plotMDS(geneCounts,main-"MDS Plot for Count Data", labels=colnames(cds$counts));
+		dev.off();
+	}
+	
+	#dispersion estimation
+	geneCounts=estimateGLMCommonDisp(geneCounts, design, verbose=TRUE);
+	geneCounts=estimateGLMTagwiseDisp(geneCounts, design);
+	#Plot biological coeefficient.
+	if(FALSE){
+		png("Plot_GLM_BiologicalCoefficientVariation.png");
+		plotBCV(geneCounts);
+		dev.off();
+	}
+	#Mean-variance relation plot. You might prefer to use the next plot(dglmStdResid) instead.
+	#Search for dglmStdResid in edgeR doc for more explication.
+	if(FALSE){
+		png("Plot_GLM_Mean-variance.png");
+		meanVar=plotMeanVar(geneCounts, show.raw.vars=TRUE, show.tagwise.vars=TRUE, show.binned.common.diusp.vars=FALSE, show.ave.raw.vars=FALSE,
+		NBline=TRUE, nbins=100, pch=16, xlab="Mean Expression (log10)", ylab="Variance (log10)", main="Mean-Variance Plot");
+		dev.off();
+	}
+	#A probably more suitable mean-variance relation plot for 3 component analysis.
+	#Will need deep testing...
+	if(FALSE){
+		png("Plot_GLM_StdResidue");
+		dglmStdResid(geneCounts$counts, design, ..^????);
+		dev.off();
+	}
+	
+	#Dif. exp. You might want to change the coef value.
+	fit= glmFit(geneCounts, design);
+	lrt= glmLRT(fit, coef=2:3);
+	top=topTags(lrt, n=nrow(geneCounts$counts))$table;
+	
+	de=rownames(top[top$FDR<0.05,]);
+	#Histogram of pvalue
+	if(TRUE){
+		png("Histogram_GLM_Pvalue")
+		hist(top$PValue, breaks=20);
+		dev.off();
+	}
+	#I could add plotSmear...
 
+	#heat-map
+	if(TRUE){
+		png("HeatMap_GLM_HeatMap");
+		heatmap(log(normCounts[de,]+1), ColSideColor=colors[group]);
+		dev.off();
+	}
+	#Output results table...
+	if(TRUE){
+		write.table(top, file="Three-component-analysis.txt", sep='\t', quote=FALSE);
+	}
 }
+
+#Will print session info...
+if(TRUE){
+	print("This analysis was performed on:"
+	sessionInfo();
+}
+
+
+
+
 
