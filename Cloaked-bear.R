@@ -20,8 +20,9 @@
 library(Rsubread)
 library(RColorBrewer)
 library(edgeR)
+library(gplots);
 
-numThreads=4;
+numThreads=1;
 numOfGene=500; #for heatMap
 colors=brewer.pal(9, "Set1");
 
@@ -33,8 +34,11 @@ fileList=args[0:(length(args)-2)];
 print(annotationFile);
 dir.create(outputDirectory);
 
+#Will write a Log file and print message to screen.
+sink(file="SessionLog_AGM_CLO.1.txt", append=FALSE, split=TRUE);
+
 #lets start to work with some data!
-count=featureCounts(files=fileList,nthreads=numThreads, annot=annotationFile, isGTFAnnotationFile=TRUE );
+count=featureCounts(files=fileList,nthreads=numThreads, annot=annotationFile, isGTFAnnotationFile=TRUE, GTF.attrType="gene_name", isPairedEnd=TRUE, );
 countTable=count$count;
 means=rowMeans(countTable);
 filter=means>=10;
@@ -81,13 +85,14 @@ if(FALSE){
 #[1] Del Del Del Gly Gly Gly
 #dataToCreateDGE is a selection of column from the original table.
 # CHange the ... below
-if(FALSE){
-	group=c(...);
-	dataToCreateDGE=geneCounts[...];
+if(TRUE){
+	group=c("MED","MED","MED","MED","MED","CLO","CLO","CLO","CLO","CLO");
+	dataToCreateDGE=geneCounts;
 
 	cds=DGEList(dataToCreateDGE, group=group);
 	#If true will print the number of having 0 counts across all samples.
-	if(FALSE){
+	if(TRUE){
+		print("0 counts across all samples");
 		sum(cds$all.zeros)
 	}
 	#The normalisation method use, possibility: "TMM", "RLE", "upperquartile", "non"
@@ -99,7 +104,7 @@ if(FALSE){
 		scale=cds$samples$lib.size*cds$samples$norm.factors;
 		normCounts=round(t(t(dataToCreateDGE)/scale)*mean(scale));
 		#BoxPLot of the normalized pseudo-count
-		if(FALSE){
+		if(TRUE){
 			png("BoxPlot_DistributionNormlizedPseudoCounts.png");
 			boxplot(log2(normCounts+1), las=2); #could add color
 			#need to add flafla to graph
@@ -107,9 +112,10 @@ if(FALSE){
 		}
 	}
 	#An MDS plot to measures the similarity of the samples. Usefull for QC and sample visualization.
+	#Does not work...
 	if(FALSE){
 		png("MDSplot_ForCountData.png");
-		plotsMDS(cds, main="MDS Plot for normalized count data", label=colnames(cds$counts));
+		plotMDS(cds, main="MDS Plot for normalized count data", labels=colnames(cds$counts));
 		dev.off();
 		#flafla...
 	}
@@ -117,55 +123,67 @@ if(FALSE){
 	#For more explication see http://cgrlucb.wikispaces.com/edgeR+spring2013
 	cds=estimateCommonDisp(cds, verbose=TRUE);
 	cds=estimateTagwiseDisp(cds);
-	#You should look for estimateTrendedDisp in edgeR doc. I don't fully understand...
+	
 	#To plot the biological coefficient of variation. Can be set to FALSE
 	if(TRUE){
-		png("Plot_BiologicalCoefficientOfVariation");
+		png("Plot_BiologicalCoefficientOfVariation.png");
 		plotBCV(cds);
-		def.off();
+		dev.off();
 	}
-	#To plot mean-variance relation
+	#To plot mean-variance relation. 
 	if(TRUE){
-		png("Plot_Mean-Variance");
+		png("Plot_Mean-Variance.png");
 		#First line is for data, second is for format. You will need to do some adjustment on the first line...
 		plotMeanVar(cds, show.raw.vars=TRUE, show.tagwise.vars=TRUE, show.binned.common.disp.vars=FALSE, show.ave.raw.vars=FALSE, NBline = TRUE , nbins = 100 , 
 		pch = 16 , xlab ="Mean Expression (Log10 Scale)" , ylab = "Variance (Log10 Scale)" , main = "Mean-Variance Plot" );
 		dev.off();
 	}
-	et <- exactTest(cds, pair=levels(group))
+	#I'n not sure if unique is the best way to solve the problem...
+	et <- exactTest(cds, pair=unique(group))
 	topTags(et)
 	top <- topTags(et, n=nrow(cds$counts))$table
 	head(top)
-	de <- rownames(top[top$FDR<0.05,])
+	de <- rownames(top[top$FDR<0.1,])
+	print("Length DE");
 	length(de)
 	head(de)
-	if(FALSE){
-		png("Histogram_distributionPvalue");
+	if(TRUE){
+		png("Histogram_distributionPvalue.png");
 		hist(top$PValue, breaks=20)
 		dev.off()
 	}
-	if(TRUE){
-		png("PlotSmear_mean-diffrence");
+	if(FALSE){
+		png("PlotSmear_mean-diffrence.png");
 		plotSmear(cds , de.tags=de)
 		abline(h=c(-2, 2), col=colors[2])
 	}
 	if(TRUE){
-		png("VolcanoPlot_logFoldChangesAndPvalues");
+		png("VolcanoPlot_logFoldChangesAndPvalues.png");
 		plot(top$logFC, -log10(top$PValue), pch=20, cex=.5, ylab="-log10(p-value)", xlab="logFC", col=as.numeric(rownames(top) %in% de)+1)
 		abline(v=c(-2, 2), col=colors[2])
-		def.off()
+		dev.off()
 	}
 	if(TRUE){
-		png("HeatMap_topGenes");
-		heatmap(log(normCounts[de[1:numOfGene],]+1), ColSideColor=colors[group]);
+		if(length(de)<numOfGene){
+			numOfGene=length(de);
+		}
+		pdf("HeatMap_topGenes.pdf", height=15);
+		#fpar(font.axis="Courier");
+		#The heat map really need optimisation...
+		#colors <- colorRampPalette(c("white","green","green4","violet","purple"))(100)
+		colors <- colorRampPalette(c("blue", "green", "yellow", "orange", "red"))(100)
+		heatmap.2(log2(normCounts[de[1:numOfGene],]+1), col=colors, mar=c(20,20), scale="none",trace="none", cexRow=0.4 ,cexCol=0.6,  main="Heat-map Log2")
+		#heatmap(log(normCounts[de[1:numOfGene],]+1), col=colors, margins=c(15,20), scale="none", 
+		dev.off();
 	}
 	if(TRUE){
 		write.table(top, file="two-class-results.txt", sep='\t', quote=FALSE)
 	}
 }
 
-
-#3 components comparison using the Generalized Linear Model (GLM) approach.
+#############################################################################
+#3 components comparison using the Generalized Linear Model (GLM) approach. #
+#############################################################################
 if(FALSE){
 	#Group is a variable containing caracteristic to group samples in 3 groups. i.e. for 14 samples
 	#group
@@ -221,10 +239,10 @@ if(FALSE){
 		dev.off();
 	}
 	#A probably more suitable mean-variance relation plot for 3 component analysis.
-	#Will need deep testing...
+	#Will need deep testing...and modification
 	if(FALSE){
 		png("Plot_GLM_StdResidue");
-		dglmStdResid(geneCounts$counts, design, ..^????);
+		dglmStdResid(geneCounts$counts, design, ...);
 		dev.off();
 	}
 	
@@ -233,7 +251,7 @@ if(FALSE){
 	lrt= glmLRT(fit, coef=2:3);
 	top=topTags(lrt, n=nrow(geneCounts$counts))$table;
 	
-	de=rownames(top[top$FDR<0.05,]);
+	de=rownames(top[top$FDR<0.1,]);
 	#Histogram of pvalue
 	if(TRUE){
 		png("Histogram_GLM_Pvalue")
@@ -256,11 +274,11 @@ if(FALSE){
 
 #Will print session info...
 if(TRUE){
-	print("This analysis was performed on:"
+	print("This analysis was performed on:")
 	sessionInfo();
 }
 
-
+sink(file=NULL);
 
 
 
